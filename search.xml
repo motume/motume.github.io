@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search> 
+  
+    
+    <entry>
+      <title>Hadoop伪分布式环境部署</title>
+      <link href="/2018/07/06/Hadoop%E4%BC%AA%E5%88%86%E5%B8%83%E5%BC%8F%E7%8E%AF%E5%A2%83%E9%83%A8%E7%BD%B2/"/>
+      <url>/2018/07/06/Hadoop%E4%BC%AA%E5%88%86%E5%B8%83%E5%BC%8F%E7%8E%AF%E5%A2%83%E9%83%A8%E7%BD%B2/</url>
+      <content type="html"><![CDATA[<p><strong>Java环境准备：</strong><br><a id="more"></a><br>centos6.*系统桌面环境安装会自带jdk</p><blockquote><pre><code>rpm –qa \| grep jdk 找出系统自带的jdkrpm –e jdk...... --nodeps 卸载在oracle官网下载jdk1.8，上传服务器将jdk解压到/usr/lib/jvm/下</code></pre></blockquote><p>编辑环境变量配置vim /etc/profile<br>添加如下：</p><blockquote><pre><code>export JAVA_HOME=/usr/lib/jvm/jdk1.8.0_162export JRE_HOME=\${JAVA_HOME}/jreexport CLASSPATH=.:\${JAVA_HOME}/lib:\${JRE_HOME}/libexport PATH=\${JAVA_HOME}/bin:\$PATH：wq 保存退出source /etc/profile 刷新环境变量</code></pre></blockquote><p>检查jdk是否安装成功</p><p>java –version</p><p><img src="media/020b13a03167e15468bc16384433005d.png" alt=""></p><p>出现以上输出表示Java已经安装成功。</p><p><strong>hostname设置</strong></p><p>主机名为hadoop01</p><blockquote><p>vim /etc/hosts</p></blockquote><p>增加：</p><blockquote><pre><code>172.18.14.153 hadoop01改为127.0.0.1 localhost</code></pre></blockquote><ol><li><strong>用户设置</strong></li></ol><blockquote><pre><code>1)、创建hadoop用户   [root\@hadoop01 \~]\$ useradd hadoop   [root\@hadoop01 \~]\$ passwd hadoop</code></pre></blockquote><blockquote><pre><code>2)、给hadoop用户sudo权限   [root\@hadoop01 \~]\$ vim /etc/sudoers   在 root ALL=(ALL) ALL下添加一行   hadoop ALL=(ALL) ALL   学习环境权限设置大一些，生产环境要注意普通用户的权限控制   注意：如果root用户无权修改sudoers文件，先手动为root用户添加权限   [root\@hadoop01 \~]\$ chmod u+w /etc/sudoers</code></pre></blockquote><p><strong>2、配置hadoop</strong></p><p>1)、切换到hadoop用户解压hadoop2.7.1.tar.gz</p><blockquote><pre><code>[hadoop\@hadoop01 \~]\$ sudo tar zxf hadoop2.7.1.tar.gz –C /usr/local[hadoop\@hadoop01 \~]\$ sudo mv /usr/local/hadoop2.7.1 /usr/local/hadoop[hadoop\@hadoop01 \~]\$ sudo chown –R hadoop.hadoop /usr/local/hadoop</code></pre></blockquote><p>编辑环境变量vim /etc/profile</p><p>添加hadoop环境变量：</p><blockquote><pre><code>export HADOOP_HOME=&quot;/usr/local/hadoop&quot;export PATH=\$HADOOP_HOME/bin:\$HADOOP_HOME/sbin:\$PATH</code></pre></blockquote><p>刷新环境变量ssource /etc/profile</p><p>执行hadoop version查看hadoop版本</p><p><img src="media/083d948c1152dc322d4f7118c4ec1754.png" alt=""></p><p>2)、 配置 hadoop-env.sh、mapred-env.sh、yarn-env.sh文件的JAVA_HOME参数</p><p>进入hadoop目录</p><blockquote><pre><code>[hadoop\@hadoop01 \~]\$ cd /usr/local/hadoop[hadoop\@hadoop01 hadoop]\$ vim etc/hadoop/hadoop.env.sh</code></pre></blockquote><p>修改JAVA_HOME参数</p><blockquote><p>export JAVA_HOME=”/usr/bin/jvm/jdk1.8.0_162”</p></blockquote><p>3)、配置core-site.xml</p><blockquote><p>[hadoop\@hadoop01 hadoop]\$ vim /etc/hadoop/core-site.xml</p></blockquote><p><img src="media/c9003cda2ee492d9022ae653093403ca.png" alt=""></p><p> fs.defaultFS参数配置的是HDFS的地址。</p><p> hadoop.tmp.dir配置的是Hadoop临时目录，比如HDFS的NameNode数据默认都存放这个目录下，查看*-default.xml等默认配置文件，就可以看到很多依赖\${hadoop.tmp.dir}的配置。</p><p>默认的hadoop.tmp.dir是/tmp/hadoop-\${user.name},此时有个问题就是NameNode会将HDFS的元数据存储在这个/tmp目录下，如果操作系统重启了，系统会清空/tmp目录下的东西，导致NameNode元数据丢失，是个非常严重的问题，所有我们应该修改这个路径。</p><p>4)、配置hdfs-site.xml</p><blockquote><p>[hadoop\@hadoop01 hadoop]\$ vim etc/hadoop/hdfs-site.xml</p></blockquote><p>dfs.replication配置的是HDFS存储时的备份数量，因为这里是伪分布式环境只有一个节点，所以这里设置为1。</p><p><img src="media/88f6b5d94587f4ee11e9d04115cc80e0.png" alt=""></p><p><strong>Hadoop配置文件说明</strong></p><p>Hadoop 的运行方式是由配置文件决定的（运行 Hadoop<br>时会读取配置文件），因此如果需要从伪分布式模式切换回非分布式模式，需要删除<br>core-site.xml 中的配置项。</p><p>此外，伪分布式虽然只需要配置 fs.defaultFS 和 dfs.replication<br>就可以运行（官方教程如此），不过若没有配置 hadoop.tmp.dir<br>参数，则默认使用的临时目录为<br>/tmp/hadoo-hadoop，而这个目录在重启时有可能被系统清理掉，导致必须重新执行 format<br>才行。所以我们进行了设置，同时也指定 dfs.namenode.name.dir 和<br>dfs.datanode.data.dir，否则在接下来的步骤中可能会出错。</p><p>配置yarn</p><ol><li>配置mapred-site.xml</li></ol><blockquote><p>  默认没有这个文件，但有一个mapred-site.xml.template配置模板文件，复制模板生成mapred-site.xml</p></blockquote><blockquote><p>  [hadoop\@hadoop01 hadoop]\$ cp etc/hadoop/mapred-site.xml.template<br>  etc/hadoop/mapred-site.xml</p></blockquote><blockquote><p>  添加配置</p></blockquote><p><img src="media/9b9aff98e700c80d21210763d63b4bfd.png" alt=""></p><blockquote><p>  指定MapReduce运行在yarn框架上</p></blockquote><ol><li>配置yarn-site.xml</li></ol><blockquote><p>  添加配置</p></blockquote><p><img src="media/1ff47d92492a2c5eb3528b5fa66829a9.png" alt=""></p><blockquote><p>  <strong>yarn.nodemanager.aux-services配置了yarn的默认混洗方式，选择为mapreduce的默认混洗算法。</strong></p></blockquote><blockquote><p>  <strong>yarn.resourcemanager.hostname指定了Resourcemanager运行在哪个节点上。</strong></p></blockquote><p><strong>配置完成后，执行 NameNode 的格式化:</strong>  </p><blockquote><p>[hadoop\@hadoop01 hadoop]\$ hdfs namenode –format</p></blockquote><p>注：</p><p>成功的话，会看到 “successfully formatted” 和 “Exitting with status 0”<br>的提示，若为 “Exitting with status 1” 则是出错。</p><blockquote><pre><code>如果在这一步时提示 Error: JAVA_HOME is not set and could not be found.的错误，则说明之前设置 JAVA_HOME 环境变量那边就没设置好，请按教程先设置好JAVA_HOME变量，否则后面的过程都是进行不下去的。如果已经按照前面教程在.bashrc文件中设置了JAVA_HOME，还是出现Error: JAVA_HOME is not set and could not be found.的错误，那么，请到hadoop的安装目录修改配置文件“/usr/local/hadoop/etc/hadoop/hadoop-env.sh”，在里面找到“exportJAVA_HOME=\${JAVA_HOME}”这行，然后，把它修改成JAVA安装路径的具体地址，比如，“exportJAVA_HOME=/usr/lib/jvm/default-java”，然后，再次启动Hadoop。</code></pre></blockquote><p>格式化是对HDFS这个分布式文件系统中的DataNode进行分块，统计所有分块后的初始元数据的存储在NameNode中。</p><p>格式化后，查看core-site.xml里hadoop.tmp.dir（本例是hadoop目录下/tmp目录）指定的目录下是否有了dfs目录，如果有，说明格式化成功。</p><p><strong>NameNode格式化后的目录下内容</strong></p><p><img src="media/62251dac171928b1c8ded85d2730f09a.png" alt=""></p><blockquote><pre><code>fsimage是NameNode元数据在内存满了后，持久化保存到的文件。fsimage\*.md5 是校验文件，用于校验fsimage的完整性。seen_txid 是hadoop的版本vession文件里保存：namespaceID：NameNode的唯一ID。clusterID:集群ID，NameNode和DataNode的集群ID应该一致，表明是一个集群。</code></pre></blockquote><p>启动hdfs、namenode、DataNode、secondarynamenode、resourcemanager、nodemanager</p><p>启动NameNode</p><blockquote><p>\${HADOOP_HOME}/sbin/hadoop-daemon.sh start namenode</p></blockquote><p>启动DataNode</p><blockquote><p>\${HADOOP_HOME}/sbin/hadoop-daemon.sh start datanode</p></blockquote><p>启动SecondaryNameNode</p><blockquote><p>\${HADOOP_HOME}/sbin/hadoop-daemon.sh start secondarynamenode</p></blockquote><p>启动Resourcemanager</p><blockquote><p>\${HADOOP_HOME}/sbin/yarn-daemon.sh start resourcemanager</p></blockquote><p>启动nodemanager</p><blockquote><p>\${HADOOP_HOME}/sbin/yarn-daemon.sh start nodemanager</p></blockquote><p>所有启动脚本都在hadoop目录下的sbin</p><blockquote><p>star-all.sh启动所有</p></blockquote><p>查看是否启动成功</p><p><img src="media/a6d807b157641889fcdcdc7a4098e98e.png" alt=""></p>]]></content>
+      
+      
+        <tags>
+            
+            <tag> hadoop </tag>
+            
+            <tag> markdown </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    <entry>
+      <title>hexo+GitHub</title>
+      <link href="/2018/06/29/hexo+GitHub/"/>
+      <url>/2018/06/29/hexo+GitHub/</url>
+      <content type="html"><![CDATA[<blockquote><p>这个是hexo，用的markdown喔。</p></blockquote><p><strong>1.安装Node.js</strong></p><ul><li>下载node.js <a href="https://nodejs.org/en/download/" target="_blank" rel="noopener">点击下载</a></li></ul><ul><li>解压到/usr/local/，更改名称为node</li></ul><blockquote><p>tar zxf node-v6.7.0-linux-x64.tar.gz</p></blockquote><ul><li>配置环境变量<a id="more"></a><blockquote><pre><code>vim /etc/profile</code></pre><p>  export PATH=$PATH:/usr/local/node/bin    <em>末尾添加</em><br>  source /etc/profile      <em>重新加载变量</em></p></blockquote></li></ul><p><strong>2.安装hexo</strong></p><ul><li>创建博客所在目录</li></ul><blockquote><p>mkdir /usr/local/hexo/</p></blockquote><ul><li>安装hexo</li></ul><blockquote><pre><code>cd /usr/local/hexoyum -y install git-core  *安装git*npm install -g hexo-clihexo init *初始化hexo*npm install</code></pre></blockquote><ul><li>启动测试hexo是否安装成功</li></ul><blockquote><p>hexo server <em>本地启动</em></p></blockquote><blockquote><p>INFO  Hexo is running at <a href="http://0.0.0.0:4000/" target="_blank" rel="noopener">http://0.0.0.0:4000/</a>. Press Ctrl+C to stop. <em>此时控制台应会打印</em></p><p>测试访问 <a href="http://IP:4000" target="_blank" rel="noopener">http://IP:4000</a></p></blockquote><p><img src="https://i.imgur.com/qWIJ4Bl.png" alt=""></p><ul><li>安装扩展程序包</li></ul><blockquote><pre><code>npm install hexo-generator-index --savenpm install hexo-generator-archive --savenpm install hexo-generator-category --savenpm install hexo-generator-tag --savenpm install hexo-server --savenpm install hexo-deployer-git --savenpm install hexo-deployer-heroku --savenpm install hexo-deployer-rsync --savenpm install hexo-deployer-openshift --savenpm install hexo-renderer-marked --savenpm install hexo-renderer-stylus --savenpm install hexo-generator-feed --savenpm install hexo-generator-sitemap --save</code></pre></blockquote><p><strong>3.上传到GitHub</strong></p><ul><li><p>创建GitHub账户</p></li><li><p>新建存储仓库</p></li></ul><p><img src="https://i.imgur.com/3nlZN8L.png" alt=""></p><blockquote><p>仓库名为 <strong>用户名.github.io</strong> 格式</p></blockquote><ul><li>hexo文件夹下的内容：</li></ul><blockquote><pre><code>_config.yml *hexo配置文件*db.jsonnode_modulespackage.jsonscaffoldspublicsourcethemes</code></pre></blockquote><ul><li>修改_config.yml</li></ul><blockquote><pre><code>deploy:    type: git    repository: https://github.com/motu/motume.github.io.git    branch: master</code></pre></blockquote><ul><li>生成秘钥</li></ul><blockquote><pre><code># 执行以下命令然后一路回车 创建秘钥ssh-keygen</code></pre></blockquote><blockquote><pre><code>#复制 公钥内容 稍后加入Github 账户的 sshkey中less ~/.ssh/id_rsa.pub</code></pre></blockquote><ul><li>设置秘钥</li></ul><blockquote><pre><code>登录Github后访问https://github.com/settings/keys选择Add SSH key，取个名字然后把内容粘进去，保存即可。</code></pre></blockquote><p><strong>4.hexo常用命令</strong></p><ul><li>生成新的文章</li></ul><blockquote><pre><code>hexo n &quot;新的文章&quot;文章生成在hexo目录下的source/_post/目录下以.md结尾</code></pre></blockquote><ul><li>启动hexo预览</li></ul><blockquote><pre><code>hexo s</code></pre></blockquote><ul><li>生成静态文件</li></ul><blockquote><pre><code>hexo g默认生成在hexo目录下public</code></pre></blockquote><ul><li>提交部署</li></ul><blockquote><pre><code>hexo d提交到GitHub</code></pre></blockquote><hr><p>#示例站点</p><ul><li>示例博客站点  <a href="https://motume.github.io/" target="_blank" rel="noopener">暮途</a></li></ul><ul><li>使用主题为yilia，参考博客站点  <a href="https://mritd.me/" target="_blank" rel="noopener">默然</a> <a href="http://litten.me" target="_blank" rel="noopener">litten</a></li></ul><ul><li>主题<a href="https://github.com/litten/hexo-theme-yilia.git" target="_blank" rel="noopener">下载地址</a></li></ul><ul><li>转发请注明出处</li></ul>]]></content>
+      
+      
+        <tags>
+            
+            <tag> hexo Markdown </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    <entry>
+      <title>第二篇</title>
+      <link href="/2018/06/29/%E7%AC%AC%E4%BA%8C%E7%AF%87/"/>
+      <url>/2018/06/29/%E7%AC%AC%E4%BA%8C%E7%AF%87/</url>
+      <content type="html"><![CDATA[]]></content>
+      
+      
+    </entry>
+    
+    <entry>
+      <title>第一篇</title>
+      <link href="/2018/05/16/%E7%AC%AC%E4%B8%80%E7%AF%87/"/>
+      <url>/2018/05/16/%E7%AC%AC%E4%B8%80%E7%AF%87/</url>
+      <content type="html"><![CDATA[]]></content>
+      
+      
+    </entry>
+    
+  
+  
+</search>
